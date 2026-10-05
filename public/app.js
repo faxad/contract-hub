@@ -23,6 +23,8 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const enc = encodeURIComponent;
+  /** Escaped text with optional line breaks at CamelCase / separator boundaries, so long names wrap between words. */
+  const softBreaks = (t) => esc(t).replace(/([a-z0-9])(?=[A-Z])|([_.-])/g, '$1$2<wbr>');
   function load(k, d) { try { const v = localStorage.getItem(`contracthub.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } }
   function save(k, v) { try { localStorage.setItem(`contracthub.${k}`, JSON.stringify(v)); } catch { /* ignore */ } }
   const api = async (url, opts) => {
@@ -524,8 +526,8 @@
       if (d.operations.length) {
         html += '<div class="op-grid">';
         for (const o of d.operations) {
-          html += `<a class="card op-card" href="${opHref(d.id, o.name)}"><div class="h"><i class="k-dot${o.output ? '' : ' oneway'}"></i><span class="nm" title="${esc(o.name)}">${esc(o.name)}</span>
-            <span class="bd">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span>${star(favKey.op(d.id, o.name))}</span></div>
+          html += `<a class="card op-card" href="${opHref(d.id, o.name)}"><div class="h"><i class="k-dot${o.output ? '' : ' oneway'}"></i><span class="nm">${softBreaks(o.name)}</span>${star(favKey.op(d.id, o.name))}</div>
+            <div class="tags">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span></div>
             ${o.doc ? `<div class="d">${esc(o.doc)}</div>` : ''}
             <div class="io"><span class="t" title="${esc(o.inputElement || '')}">${esc(o.inputElement || '—')}</span><span class="ar">→</span><span class="t" title="${esc(o.outputElement || '')}">${esc(o.outputElement || '(none)')}</span>${o.faults.length ? `<span class="badge warn">${o.faults.length} fault${o.faults.length > 1 ? 's' : ''}</span>` : ''}</div>
             <div class="io"><span class="t" title="POST ${esc(o.path)}">POST ${esc(o.path)}</span></div></a>`;
@@ -535,7 +537,8 @@
       if (d.elements && d.elements.length) {
         html += `<div class="section-h"><h2>Global elements</h2><span class="c">${d.elements.length}</span></div><div class="op-grid">`;
         for (const e of d.elements) {
-          html += `<a class="card op-card" href="${elHref(d.id, e.name)}"><div class="h"><i class="k-dot el"></i><span class="nm" title="${esc(e.name)}">${esc(e.name)}</span><span class="bd"><span class="badge">${e.fields.length} fields</span>${star(favKey.el(d.id, e.name))}</span></div>
+          html += `<a class="card op-card" href="${elHref(d.id, e.name)}"><div class="h"><i class="k-dot el"></i><span class="nm">${softBreaks(e.name)}</span>${star(favKey.el(d.id, e.name))}</div>
+            <div class="tags"><span class="badge">${e.fields.length} fields</span></div>
             ${e.doc ? `<div class="d">${esc(e.doc)}</div>` : ''}<div class="io"><span class="t" title="${esc(e.ns)}">${esc(e.ns)}</span></div></a>`;
         }
         html += '</div>';
