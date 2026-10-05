@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contract Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><path d='M9 10h14M9 16h14M9 22h9' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">
+      <span class="logo" aria-hidden="true"></span>
+      <span>Contract Hub</span>
+    </a>
+    <div class="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 014.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z"/></svg>
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search services, operations, fields, types…  (try field:email or type:date)">
+      <kbd>/</kbd>
+    </div>
+    <div class="top-actions">
+      <span id="live" class="live" title="Live updates"><i></i><span>Connecting</span></span>
+      <button class="btn" id="btn-upload" title="Add WSDL/XSD files to the catalogue">Add files</button>
+      <button class="icon-btn" id="btn-theme" title="Toggle theme" aria-label="Toggle theme">
+        <svg viewBox="0 0 20 20"><path d="M10 3a7 7 0 100 14 7 7 0 000-14zm0 1.5v11a5.5 5.5 0 010-11z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="filters">
+        <div class="chips" id="scope" role="tablist" aria-label="Search scope">
+          <button data-scope="all" class="on">All</button>
+          <button data-scope="service">Services</button>
+          <button data-scope="operation">Operations</button>
+          <button data-scope="field">Fields</button>
+          <button data-scope="type">Types</button>
+        </div>
+        <div class="filter-row">
+          <select id="f-folder" aria-label="Folder"><option value="">All folders</option></select>
+          <select id="f-kind" aria-label="Protocol">
+            <option value="">All protocols</option>
+            <option value="1.1">SOAP 1.1</option>
+            <option value="1.2">SOAP 1.2</option>
+            <option value="wsdl2">WSDL 2.0</option>
+            <option value="rpc">RPC style</option>
+            <option value="xsd">XSD only</option>
+          </select>
+        </div>
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="sidebar-foot" id="foot"></div>
+    </aside>
+    <main id="main" class="main"></main>
+  </div>
+
+  <div id="drop" class="drop" hidden>
+    <div class="drop-card">
+      <div class="drop-icon"></div>
+      <h2>Drop WSDL / XSD files or folders</h2>
+      <p>They'll be written to the catalogue folder and appear here automatically.</p>
+    </div>
+  </div>
+  <input type="file" id="file-input" multiple accept=".wsdl,.xsd,.xml" hidden>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:t="http://samples.acme-commerce.com/schemas/shipping/v1"
+           xmlns:cmn="http://samples.acme-commerce.com/schemas/common/v1"
+           targetNamespace="http://samples.acme-commerce.com/schemas/shipping/v1"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://samples.acme-commerce.com/schemas/common/v1" schemaLocation="../shared/AcmeCommon.xsd"/>
+
+  <xs:element name="GetShippingRatesRequest">
+    <xs:annotation><xs:documentation>Compare carrier options for a parcel.</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="FromWarehouse" type="cmn:WarehouseCode"/>
+        <xs:element name="Destination" type="cmn:Address"/>
+        <xs:element name="Parcel" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Weight" type="cmn:Measure"/>
+              <xs:element name="Length" type="cmn:Measure"/>
+              <xs:element name="Width" type="cmn:Measure"/>
+              <xs:element name="Height" type="cmn:Measure"/>
+              <xs:element name="DeclaredValue" type="cmn:Money" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="GetShippingRatesResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Status" type="cmn:ResponseStatus"/>
+        <xs:element name="Rate" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Carrier">
+                <xs:simpleType>
+                  <xs:restriction base="xs:string">
+                    <xs:enumeration value="DHL"/>
+                    <xs:enumeration value="UPS"/>
+                    <xs:enumeration value="FEDEX"/>
+                    <xs:enumeration value="ROYAL_MAIL"/>
+                    <xs:enumeration value="ARAMEX"/>
+                  </xs:restriction>
+                </xs:simpleType>
+              </xs:element>
+              <xs:element name="ServiceLevel" type="xs:string"/>
+              <xs:element name="Price" type="cmn:Money"/>
+              <xs:element name="TransitDays" type="xs:int"/>
+              <xs:element name="Guaranteed" type="xs:boolean"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CreateShipmentRequest">
+    <xs:annotation><xs:documentation>Book a carrier and return labels for each parcel.</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="OrderNumber" type="xs:string"/>
+        <xs:element name="Carrier">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="DHL"/>
+              <xs:enumeration value="UPS"/>
+              <xs:enumeration value="FEDEX"/>
+              <xs:enumeration value="ROYAL_MAIL"/>
+              <xs:enumeration value="ARAMEX"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="ServiceLevel" type="xs:string"/>
+        <xs:element name="FromWarehouse" type="cmn:WarehouseCode"/>
+        <xs:element name="Destination" type="cmn:Address"/>
+        <xs:element name="Parcel" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Weight" type="cmn:Measure"/>
+              <xs:element name="Content" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Sku" type="cmn:Sku"/>
+                    <xs:element name="Quantity" type="xs:int"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="LabelFormat" minOccurs="0">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="PDF"/>
+              <xs:enumeration value="ZPL"/>
+              <xs:enumeration value="PNG"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CreateShipmentResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Status" type="cmn:ResponseStatus"/>
+        <xs:element name="ShipmentId" type="xs:string"/>
+        <xs:element name="TrackingNumber" type="xs:string"/>
+        <xs:element name="Label" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="ParcelIndex" type="xs:int"/>
+              <xs:element name="Format" type="xs:string"/>
+              <xs:element name="Data" type="xs:base64Binary"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="PickupWindow" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="From" type="xs:dateTime"/>
+              <xs:element name="To" type="xs:dateTime"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="TrackShipmentRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:choice>
+          <xs:element name="TrackingNumber" type="xs:string"/>
+          <xs:element name="OrderNumber" type="xs:string"/>
+        </xs:choice>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="TrackShipmentResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Status" type="cmn:ResponseStatus"/>
+        <xs:element name="TrackingNumber" type="xs:string"/>
+        <xs:element name="Carrier" type="xs:string"/>
+        <xs:element name="CurrentStatus">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="LABEL_CREATED"/>
+              <xs:enumeration value="PICKED_UP"/>
+              <xs:enumeration value="IN_TRANSIT"/>
+              <xs:enumeration value="OUT_FOR_DELIVERY"/>
+              <xs:enumeration value="DELIVERED"/>
+              <xs:enumeration value="EXCEPTION"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="EstimatedDelivery" type="xs:date" minOccurs="0"/>
+        <xs:element name="Event" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="At" type="xs:dateTime"/>
+              <xs:element name="Location" type="xs:string"/>
+              <xs:element name="Description" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="ProofOfDelivery" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="SignedBy" type="xs:string"/>
+              <xs:element name="PhotoUrl" type="xs:anyURI" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CancelShipmentRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="ShipmentId" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CancelShipmentResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Status" type="cmn:ResponseStatus"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

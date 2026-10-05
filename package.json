@@ -1,0 +1,20 @@
+{
+  "name": "contract-hub",
+  "version": "2.0.0",
+  "description": "Live WSDL/XSD service catalogue with auto-generated OpenAPI specs and sample payloads",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch-path=lib --watch-path=server.js server.js",
+    "demo": "CATALOGUE_DIR=examples node server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.8",
+    "chokidar": "^4.0.3",
+    "express": "^4.21.2",
+    "js-yaml": "^4.1.0",
+    "multer": "^2.0.2",
+    "swagger-ui-dist": "^5.27.1"
+  }
+}

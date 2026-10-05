@@ -1,0 +1,8 @@
+services:
+  contract-hub:
+    build: .
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./catalogue:/app/catalogue
+    restart: unless-stopped

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions name="ShippingService"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="http://samples.acme-commerce.com/services/shipping/v1"
+    xmlns:t="http://samples.acme-commerce.com/schemas/shipping/v1"
+    xmlns:cmn="http://samples.acme-commerce.com/schemas/common/v1"
+    targetNamespace="http://samples.acme-commerce.com/services/shipping/v1">
+  <wsdl:documentation>Carrier rates, shipment creation, labels and tracking.</wsdl:documentation>
+  <wsdl:types>
+    <xs:schema>
+      <xs:import namespace="http://samples.acme-commerce.com/schemas/shipping/v1" schemaLocation="ShippingService.xsd"/>
+      <xs:import namespace="http://samples.acme-commerce.com/schemas/common/v1" schemaLocation="../shared/AcmeCommon.xsd"/>
+    </xs:schema>
+  </wsdl:types>
+
+  <wsdl:message name="RequestContext"><wsdl:part name="header" element="cmn:RequestContext"/></wsdl:message>
+  <wsdl:message name="ValidationFault"><wsdl:part name="fault" element="cmn:ValidationFault"/></wsdl:message>
+  <wsdl:message name="SystemFault"><wsdl:part name="fault" element="cmn:SystemFault"/></wsdl:message>
+  <wsdl:message name="GetShippingRatesRequest"><wsdl:part name="body" element="t:GetShippingRatesRequest"/></wsdl:message>
+  <wsdl:message name="GetShippingRatesResponse"><wsdl:part name="body" element="t:GetShippingRatesResponse"/></wsdl:message>
+  <wsdl:message name="CreateShipmentRequest"><wsdl:part name="body" element="t:CreateShipmentRequest"/></wsdl:message>
+  <wsdl:message name="CreateShipmentResponse"><wsdl:part name="body" element="t:CreateShipmentResponse"/></wsdl:message>
+  <wsdl:message name="TrackShipmentRequest"><wsdl:part name="body" element="t:TrackShipmentRequest"/></wsdl:message>
+  <wsdl:message name="TrackShipmentResponse"><wsdl:part name="body" element="t:TrackShipmentResponse"/></wsdl:message>
+  <wsdl:message name="CancelShipmentRequest"><wsdl:part name="body" element="t:CancelShipmentRequest"/></wsdl:message>
+  <wsdl:message name="CancelShipmentResponse"><wsdl:part name="body" element="t:CancelShipmentResponse"/></wsdl:message>
+
+  <wsdl:portType name="ShippingServicePortType">
+    <wsdl:operation name="GetShippingRates">
+      <wsdl:documentation>Compare carrier options for a parcel.</wsdl:documentation>
+      <wsdl:input message="tns:GetShippingRatesRequest"/>
+      <wsdl:output message="tns:GetShippingRatesResponse"/>
+      <wsdl:fault name="ValidationFault" message="tns:ValidationFault"/>
+      <wsdl:fault name="SystemFault" message="tns:SystemFault"/>
+    </wsdl:operation>
+    <wsdl:operation name="CreateShipment">
+      <wsdl:documentation>Book a carrier and return labels for each parcel.</wsdl:documentation>
+      <wsdl:input message="tns:CreateShipmentRequest"/>
+      <wsdl:output message="tns:CreateShipmentResponse"/>
+      <wsdl:fault name="ValidationFault" message="tns:ValidationFault"/>
+      <wsdl:fault name="SystemFault" message="tns:SystemFault"/>
+    </wsdl:operation>
+    <wsdl:operation name="TrackShipment">
+      <wsdl:input message="tns:TrackShipmentRequest"/>
+      <wsdl:output message="tns:TrackShipmentResponse"/>
+      <wsdl:fault name="ValidationFault" message="tns:ValidationFault"/>
+      <wsdl:fault name="SystemFault" message="tns:SystemFault"/>
+    </wsdl:operation>
+    <wsdl:operation name="CancelShipment">
+      <wsdl:input message="tns:CancelShipmentRequest"/>
+      <wsdl:output message="tns:CancelShipmentResponse"/>
+      <wsdl:fault name="ValidationFault" message="tns:ValidationFault"/>
+      <wsdl:fault name="SystemFault" message="tns:SystemFault"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="ShippingServiceSoap11" type="tns:ShippingServicePortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="GetShippingRates">
+      <soap:operation soapAction="http://samples.acme-commerce.com/services/shipping/v1/GetShippingRates"/>
+      <wsdl:input><soap:header message="tns:RequestContext" part="header" use="literal"/><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ValidationFault"><soap:fault name="ValidationFault" use="literal"/></wsdl:fault>
+      <wsdl:fault name="SystemFault"><soap:fault name="SystemFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="CreateShipment">
+      <soap:operation soapAction="http://samples.acme-commerce.com/services/shipping/v1/CreateShipment"/>
+      <wsdl:input><soap:header message="tns:RequestContext" part="header" use="literal"/><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ValidationFault"><soap:fault name="ValidationFault" use="literal"/></wsdl:fault>
+      <wsdl:fault name="SystemFault"><soap:fault name="SystemFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="TrackShipment">
+      <soap:operation soapAction="http://samples.acme-commerce.com/services/shipping/v1/TrackShipment"/>
+      <wsdl:input><soap:header message="tns:RequestContext" part="header" use="literal"/><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ValidationFault"><soap:fault name="ValidationFault" use="literal"/></wsdl:fault>
+      <wsdl:fault name="SystemFault"><soap:fault name="SystemFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="CancelShipment">
+      <soap:operation soapAction="http://samples.acme-commerce.com/services/shipping/v1/CancelShipment"/>
+      <wsdl:input><soap:header message="tns:RequestContext" part="header" use="literal"/><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ValidationFault"><soap:fault name="ValidationFault" use="literal"/></wsdl:fault>
+      <wsdl:fault name="SystemFault"><soap:fault name="SystemFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="ShippingService">
+    <wsdl:documentation>Carrier rates, shipment creation, labels and tracking.</wsdl:documentation>
+    <wsdl:port name="ShippingServiceSoap11Port" binding="tns:ShippingServiceSoap11">
+      <soap:address location="https://soa.acme-commerce.com/shipping/v1"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

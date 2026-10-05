@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:cmn="http://samples.acme-commerce.com/schemas/common/v1"
+           targetNamespace="http://samples.acme-commerce.com/schemas/common/v1"
+           elementFormDefault="qualified">
+  <xs:annotation><xs:documentation>Common types shared by all Acme Commerce services.</xs:documentation></xs:annotation>
+
+  <xs:simpleType name="CurrencyCode">
+    <xs:annotation><xs:documentation>ISO 4217 alphabetic currency code.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string"><xs:pattern value="[A-Z]{3}"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Sku">
+    <xs:annotation><xs:documentation>Stock keeping unit, e.g. ACM-100234.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string"><xs:pattern value="[A-Z]{3}-[0-9]{6}"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="WarehouseCode">
+    <xs:restriction base="xs:string"><xs:pattern value="WH[0-9]{3}"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="SalesChannel">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="WEB"/><xs:enumeration value="MOBILE_APP"/><xs:enumeration value="STORE"/>
+      <xs:enumeration value="MARKETPLACE"/><xs:enumeration value="CALL_CENTRE"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="cmn:CurrencyCode" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="Measure">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="unit" use="required">
+          <xs:simpleType><xs:restriction base="xs:string">
+            <xs:enumeration value="KG"/><xs:enumeration value="G"/><xs:enumeration value="CM"/><xs:enumeration value="M"/>
+          </xs:restriction></xs:simpleType>
+        </xs:attribute>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="DateRange">
+    <xs:sequence>
+      <xs:element name="FromDate" type="xs:date"/>
+      <xs:element name="ToDate" type="xs:date"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Pagination">
+    <xs:sequence>
+      <xs:element name="PageNumber" type="xs:int" minOccurs="0"/>
+      <xs:element name="PageSize" minOccurs="0">
+        <xs:simpleType><xs:restriction base="xs:int"><xs:minInclusive value="1"/><xs:maxInclusive value="200"/></xs:restriction></xs:simpleType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Address">
+    <xs:sequence>
+      <xs:element name="Recipient" type="xs:string"/>
+      <xs:element name="Line1" type="xs:string"/>
+      <xs:element name="Line2" type="xs:string" minOccurs="0"/>
+      <xs:element name="City" type="xs:string"/>
+      <xs:element name="Region" type="xs:string" minOccurs="0"/>
+      <xs:element name="PostalCode" type="xs:string"/>
+      <xs:element name="CountryCode">
+        <xs:simpleType><xs:restriction base="xs:string"><xs:length value="2"/></xs:restriction></xs:simpleType>
+      </xs:element>
+      <xs:element name="Phone" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ResponseStatus">
+    <xs:sequence>
+      <xs:element name="StatusCode">
+        <xs:simpleType><xs:restriction base="xs:string">
+          <xs:enumeration value="SUCCESS"/><xs:enumeration value="PARTIAL"/><xs:enumeration value="FAILED"/>
+        </xs:restriction></xs:simpleType>
+      </xs:element>
+      <xs:element name="Message" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="RequestContext">
+    <xs:annotation><xs:documentation>Caller context sent in the SOAP header of every call.</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="RequestId" type="xs:string"/>
+        <xs:element name="CorrelationId" type="xs:string" minOccurs="0"/>
+        <xs:element name="Channel" type="cmn:SalesChannel"/>
+        <xs:element name="StoreCode" type="xs:string" minOccurs="0"/>
+        <xs:element name="ClientApplication" type="xs:string"/>
+        <xs:element name="Timestamp" type="xs:dateTime"/>
+        <xs:element name="Locale" type="xs:language" default="en-GB"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="ValidationFault">
+    <xs:annotation><xs:documentation>The request broke a business rule; fix the input before retrying.</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Code" type="xs:string"/>
+        <xs:element name="Message" type="xs:string"/>
+        <xs:element name="Violation" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType><xs:sequence>
+            <xs:element name="Field" type="xs:string"/>
+            <xs:element name="Problem" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="SystemFault">
+    <xs:annotation><xs:documentation>A downstream system failed; the call may be retried.</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Code" type="xs:string"/>
+        <xs:element name="Message" type="xs:string"/>
+        <xs:element name="Retryable" type="xs:boolean"/>
+        <xs:element name="System" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
