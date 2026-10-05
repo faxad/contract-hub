@@ -13,6 +13,7 @@
     folder: '',
     kind: '',
     expanded: new Set(load('expanded', [])),
+    favs: new Set(load('favs', [])),
     showAll: null,
     kb: -1,
     ui: { dir: 'request', soap: null, left: 'sample', right: 'json', fieldFilter: '', svcTab: 'ops', specFmt: 'yaml', srcFile: null },
@@ -81,8 +82,120 @@
     }).join('\n');
   }
   const highlighters = { xml: hlXml, json: hlJson, yaml: hlYaml };
-  const codeBlock = (src, lang) => (src == null ? '<div class="note">Nothing to show</div>'
-    : `<pre class="code">${highlighters[lang] ? highlighters[lang](src) : esc(src)}</pre>`);
+
+  /* ------------------------------ code viewer: line numbers + folding ------------------------------ */
+
+  /** Split highlighted HTML into lines, closing and reopening token spans that cross line breaks. */
+  function splitHighlighted(html) {
+    const out = [];
+    let open = [];
+    for (const line of html.split('\n')) {
+      let s = open.join('') + line;
+      const re = /<span class="[^"]*">|<\/span>/g;
+      let m;
+      while ((m = re.exec(line))) { if (m[0] === '</span>') open.pop(); else open.push(m[0]); }
+      s += '</span>'.repeat(open.length);
+      out.push(s);
+    }
+    return out;
+  }
+
+  /**
+   * Foldable regions keyed by start line: { from, to, depth } where from..to are the lines hidden
+   * when folded. XML/JSON keep the closing line visible; YAML hides the whole indented block.
+   */
+  function foldRanges(src, lang) {
+    const folds = new Map();
+    const add = (start, from, to, depth) => { if (to >= from && !folds.has(start)) folds.set(start, { from, to, depth }); };
+    if (lang === 'xml') {
+      const re = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<(\/?)([\w:.-]+)((?:"[^"]*"|'[^']*'|[^'">/]|\/(?!>))*)(\/?)>/g;
+      const stack = [];
+      let line = 0;
+      let last = 0;
+      let m;
+      while ((m = re.exec(src))) {
+        for (let i = last; i < m.index; i++) if (src.charCodeAt(i) === 10) line++;
+        last = m.index;
+        if (!m[2] || m[4]) continue; // comment / PI / CDATA / self-closing
+        if (!m[1]) { stack.push({ name: m[2], line }); continue; }
+        let k = stack.length - 1;
+        while (k >= 0 && stack[k].name !== m[2]) k--;
+        if (k < 0) continue;
+        const open = stack[k];
+        stack.length = k;
+        add(open.line, open.line + 1, line - 1, k);
+      }
+    } else if (lang === 'json') {
+      const stack = [];
+      let line = 0;
+      let inStr = false;
+      for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === '\n') { line++; continue; }
+        if (inStr) { if (ch === '\\') i++; else if (ch === '"') inStr = false; continue; }
+        if (ch === '"') inStr = true;
+        else if (ch === '{' || ch === '[') stack.push(line);
+        else if (ch === '}' || ch === ']') { const open = stack.pop(); if (open != null) add(open, open + 1, line - 1, stack.length); }
+      }
+    } else if (lang === 'yaml') {
+      const lines = src.split('\n');
+      const ind = (l) => l.match(/^\s*/)[0].length;
+      const blank = (l) => !l.trim();
+      const parents = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (blank(lines[i])) continue;
+        const n = ind(lines[i]);
+        while (parents.length && parents[parents.length - 1] >= n) parents.pop();
+        let end = i;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (blank(lines[j])) continue;
+          if (ind(lines[j]) > n) end = j; else break;
+        }
+        add(i, i + 1, end, parents.length);
+        parents.push(n);
+      }
+    }
+    return folds;
+  }
+
+  const FOLD_ICON = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function codeBlock(src, lang) {
+    if (src == null) return '<div class="note">Nothing to show</div>';
+    const lines = splitHighlighted(highlighters[lang] ? highlighters[lang](src) : esc(src));
+    const folds = foldRanges(src, lang);
+    const rows = lines.map((h, i) => {
+      const f = folds.get(i);
+      const btn = f ? `<button class="fold" data-from="${f.from}" data-to="${f.to}" data-d="${f.depth}" title="Collapse (${f.to - f.from + 1} lines)" aria-label="Collapse">${FOLD_ICON}</button>` : '<span class="fold-sp"></span>';
+      return `<div class="r">${'<span class="g">'}${btn}<span class="n">${i + 1}</span></span><span class="c">${h || ' '}</span></div>`;
+    });
+    return `<div class="code cv" style="--gw:${String(lines.length).length}ch">${rows.join('')}</div>`;
+  }
+
+  const foldTools = '<button class="icon-btn sm" data-cv="toggle" title="Collapse all"><svg viewBox="0 0 16 16"><path d="M4 3l4 3 4-3M4 13l4-3 4 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+
+  function rowsOf(cv) {
+    if (!cv._rows) cv._rows = [...cv.children];
+    return cv._rows;
+  }
+
+  function setFold(btn, closed) {
+    if (btn.classList.contains('closed') === closed) return;
+    const rows = rowsOf(btn.closest('.cv'));
+    const from = Number(btn.dataset.from);
+    const to = Number(btn.dataset.to);
+    const d = closed ? 1 : -1;
+    for (let i = from; i <= to; i++) {
+      const h = (Number(rows[i].dataset.h) || 0) + d;
+      rows[i].dataset.h = h;
+      rows[i].hidden = h > 0;
+    }
+    btn.classList.toggle('closed', closed);
+    btn.title = `${closed ? 'Expand' : 'Collapse'} (${to - from + 1} lines)`;
+    const c = btn.closest('.r').querySelector('.c');
+    if (closed) c.insertAdjacentHTML('beforeend', `<span class="ph" title="Expand">⋯ ${to - from + 1} line${to === from ? '' : 's'}</span>`);
+    else c.querySelector('.ph')?.remove();
+  }
 
   /* ------------------------------ routing ------------------------------ */
   function parseRoute() {
@@ -233,6 +346,51 @@
   }
 
   /* ------------------------------ sidebar tree ------------------------------ */
+  /* ------------------------------ favorites ------------------------------ */
+  // Keys: s:<serviceId> | o:<serviceId>/<operation> | e:<serviceId>/<element>. Stored per browser.
+  const favKey = {
+    svc: (id) => `s:${id}`,
+    op: (id, op) => `o:${id}/${op}`,
+    el: (id, el) => `e:${id}/${el}`,
+  };
+  const STAR = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l2.27 4.6 5.08.74-3.68 3.58.87 5.06L10 14.2l-4.54 2.38.87-5.06L2.65 7.94l5.08-.74z"/></svg>';
+  function star(key, cls = '') {
+    const on = S.favs.has(key);
+    return `<button class="star${on ? ' on' : ''}${cls ? ` ${cls}` : ''}" data-fav="${esc(key)}" aria-pressed="${on}" title="${on ? 'Remove from favorites' : 'Add to favorites'}">${STAR}</button>`;
+  }
+  /** Favorites that still resolve to something in the catalogue, in the order they were added. */
+  function favItems() {
+    return [...S.favs].map((k) => {
+      const type = k[0];
+      const rest = k.slice(2);
+      if (type === 's') {
+        const svc = S.svcMeta.get(rest);
+        return svc && { k, type: 'svc', svc, name: svc.name, href: svcHref(svc.id) };
+      }
+      const i = rest.indexOf('/');
+      const svc = S.svcMeta.get(rest.slice(0, i));
+      const name = rest.slice(i + 1);
+      if (!svc) return null;
+      if (type === 'o' && svc.operations.includes(name)) return { k, type: 'op', svc, name, href: opHref(svc.id, name) };
+      if (type === 'e' && svc.elements.includes(name)) return { k, type: 'el', svc, name, href: elHref(svc.id, name) };
+      return null;
+    }).filter(Boolean);
+  }
+  function toggleFav(key) {
+    if (S.favs.has(key)) S.favs.delete(key); else S.favs.add(key);
+    save('favs', [...S.favs]);
+    const on = S.favs.has(key);
+    $$('[data-fav]').filter((b) => b.dataset.fav === key).forEach((b) => {
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on);
+      b.title = on ? 'Remove from favorites' : 'Add to favorites';
+    });
+    renderNav();
+    if (parseRoute().view === 'home') renderHome();
+  }
+  const favIcon = (f) => (f.type === 'svc' ? `<span class="badge ${f.svc.kind === 'xsd' ? 'xsd' : 'soap'}">${f.svc.kind === 'xsd' ? 'XSD' : 'SVC'}</span>`
+    : `<i class="k-dot${f.type === 'el' ? ' el' : ''}"></i>`);
+
   function renderNav() {
     if (!S.cat) return;
     if (S.q.trim()) { renderResults(); renderFoot(); return; }
@@ -240,10 +398,20 @@
     const svcs = S.cat.services.filter(passesFilters);
     const nav = $('#nav');
     if (!S.cat.services.length) { nav.innerHTML = '<div class="empty-nav">No services yet.<br>Drop WSDL/XSD files into the catalogue folder.</div>'; renderFoot(); return; }
-    if (!svcs.length) { nav.innerHTML = '<div class="empty-nav">No services match the filters.</div>'; renderFoot(); return; }
+    const favs = favItems();
+    let html = '';
+    if (favs.length) {
+      html += `<div class="nav-group fav-group"><div class="gh"><span>Favorites</span><span>${favs.length}</span></div>`;
+      for (const f of favs) {
+        const active = (f.type === 'svc' && r.view === 'service' && r.id === f.svc.id) || (f.type === 'op' && r.view === 'op' && r.id === f.svc.id && r.op === f.name)
+          || (f.type === 'el' && r.view === 'el' && r.id === f.svc.id && r.el === f.name);
+        html += `<a class="fav-link${active ? ' active' : ''}" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span>${f.type === 'svc' ? '' : `<span class="s">${esc(f.svc.name)}</span>`}</span>${star(f.k)}</a>`;
+      }
+      html += '</div>';
+    }
+    if (!svcs.length) { nav.innerHTML = `${html}<div class="empty-nav">No services match the filters.</div>`; renderFoot(); return; }
     const byFolder = new Map();
     svcs.forEach((s) => { if (!byFolder.has(s.folder)) byFolder.set(s.folder, []); byFolder.get(s.folder).push(s); });
-    let html = '';
     for (const [folder, list] of byFolder) {
       html += `<div class="nav-group"><div class="gh"><span>${esc(folder === '.' ? 'root' : folder)}</span><span>${list.length}</span></div>`;
       for (const s of list) {
@@ -253,11 +421,11 @@
         html += `<a class="svc${open ? ' open' : ''}${active ? ' active' : ''}" href="${svcHref(s.id)}" data-svc="${esc(s.id)}">
           <span class="tw" data-toggle="${esc(s.id)}">${ICON_CHEV}</span>
           <span class="nm" title="${esc(s.name)}">${esc(s.name)}</span>
-          ${s.kind === 'xsd' ? '<span class="badge xsd">XSD</span>' : ''}<span class="ct">${count}</span></a>`;
+          ${s.kind === 'xsd' ? '<span class="badge xsd">XSD</span>' : ''}${star(favKey.svc(s.id), 'hov')}<span class="ct">${count}</span></a>`;
         if (open) {
           html += '<div class="ops">';
-          for (const o of s.operations) html += `<a class="op-link${r.view === 'op' && r.id === s.id && r.op === o ? ' active' : ''}" href="${opHref(s.id, o)}">${esc(o)}</a>`;
-          for (const e of s.elements) html += `<a class="op-link${r.view === 'el' && r.id === s.id && r.el === e ? ' active' : ''}" href="${elHref(s.id, e)}"><i class="k-dot el"></i>${esc(e)}</a>`;
+          for (const o of s.operations) html += `<a class="op-link${r.view === 'op' && r.id === s.id && r.op === o ? ' active' : ''}" href="${opHref(s.id, o)}"><span class="nm">${esc(o)}</span>${star(favKey.op(s.id, o), 'hov')}</a>`;
+          for (const e of s.elements) html += `<a class="op-link${r.view === 'el' && r.id === s.id && r.el === e ? ' active' : ''}" href="${elHref(s.id, e)}"><i class="k-dot el"></i><span class="nm">${esc(e)}</span>${star(favKey.el(s.id, e), 'hov')}</a>`;
           html += '</div>';
         }
       }
@@ -270,7 +438,7 @@
     const c = S.cat;
     if (!c) return;
     const p = c.problems.length;
-    $('#foot').innerHTML = `<span>${c.services.length} services · v${c.version}</span>${p ? `<a href="#/" data-problems>${p} problem${p > 1 ? 's' : ''}</a>` : '<span>No problems</span>'}`;
+    $('#foot').innerHTML = `<span>${c.services.length} service${c.services.length === 1 ? '' : 's'} · v${c.version}</span>${p ? `<a href="#/" data-problems>${p} problem${p > 1 ? 's' : ''}</a>` : '<span>No problems</span>'}`;
   }
 
   /* ------------------------------ views ------------------------------ */
@@ -303,13 +471,18 @@
         <p>Imports and includes are resolved relative to each file, so keep a service's schemas alongside its WSDL.</p>
         <button class="btn primary" data-action="upload">Choose files…</button></div>`;
     } else {
+      const favs = favItems();
+      html += `<div class="section-h"><h2>Favorites</h2><span class="c">${favs.length ? favs.length : 'star a service or operation to pin it here'}</span></div>`;
+      if (favs.length) {
+        html += `<div class="fav-grid">${favs.map((f) => `<a class="card fav-card" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span><span class="s">${f.type === 'svc' ? `${f.svc.operations.length} operations · ${esc(f.svc.folder)}` : `${esc(f.svc.name)} · ${f.type === 'op' ? 'operation' : 'element'}`}</span></span>${star(f.k)}</a>`).join('')}</div>`;
+      }
       html += `<div class="section-h"><h2>Services</h2><span class="c">most recently changed first</span></div><div class="svc-grid">`;
       for (const s of recent) {
         const ops = s.operations.length;
         const els = s.elements.length;
         const list = ops ? s.operations : s.elements;
         const shown = list.slice(0, 3);
-        html += `<a class="card svc-card" href="${svcHref(s.id)}"><div class="h"><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span><span class="bd">${badgeRow(s)}</span></div>
+        html += `<a class="card svc-card" href="${svcHref(s.id)}"><div class="h"><span class="nm" title="${esc(s.name)}">${esc(s.name)}</span><span class="bd">${badgeRow(s)}${star(favKey.svc(s.id))}</span></div>
           <div class="f">${esc(s.source)}</div>
           <div class="count"><span class="n">${ops || els}</span><span class="l">${ops ? `operation${ops === 1 ? '' : 's'}` : `element${els === 1 ? '' : 's'}`}${ops && els ? ` · ${els} element${els === 1 ? '' : 's'}` : ''}</span></div>
           <div class="ops-l">${list.length ? shown.map((o) => `<span class="op-chip">${esc(o)}</span>`).join('') + (list.length > shown.length ? `<span class="op-more">+${list.length - shown.length} more…</span>` : '') : '<i>No operations</i>'}</div></a>`;
@@ -332,7 +505,7 @@
     const s = S.svcMeta.get(r.id);
     const probs = S.cat.problems.filter((p) => d.files.includes(p.file));
     let html = `<div class="page"><div class="crumbs"><a href="#/">Catalogue</a><span>/</span><span>${esc(d.folder)}</span></div>
-      <div class="title-row"><h1>${esc(d.name)}</h1>${badgeRow(s)}
+      <div class="title-row"><h1>${esc(d.name)}</h1>${star(favKey.svc(d.id), 'lg')}${badgeRow(s)}
         <div class="row-actions">
           <a class="btn" href="/docs/${enc(d.id)}" target="_blank" rel="noopener">Swagger UI ↗</a>
           <a class="btn" href="/api/services/${enc(d.id)}/openapi.yaml?download=1">OpenAPI YAML</a>
@@ -351,19 +524,19 @@
       if (d.operations.length) {
         html += '<div class="op-grid">';
         for (const o of d.operations) {
-          html += `<a class="card op-card" href="${opHref(d.id, o.name)}"><div class="h"><i class="k-dot${o.output ? '' : ' oneway'}"></i>${esc(o.name)}
-            <span style="margin-left:auto;display:flex;gap:4px">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span></span></div>
+          html += `<a class="card op-card" href="${opHref(d.id, o.name)}"><div class="h"><i class="k-dot${o.output ? '' : ' oneway'}"></i><span class="nm" title="${esc(o.name)}">${esc(o.name)}</span>
+            <span class="bd">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span>${star(favKey.op(d.id, o.name))}</span></div>
             ${o.doc ? `<div class="d">${esc(o.doc)}</div>` : ''}
-            <div class="io"><span>${esc(o.inputElement || '—')}</span><span>→</span><span>${esc(o.outputElement || '(none)')}</span>${o.faults.length ? `<span class="badge warn">${o.faults.length} fault${o.faults.length > 1 ? 's' : ''}</span>` : ''}</div>
-            <div class="io">POST ${esc(o.path)}</div></a>`;
+            <div class="io"><span class="t" title="${esc(o.inputElement || '')}">${esc(o.inputElement || '—')}</span><span class="ar">→</span><span class="t" title="${esc(o.outputElement || '')}">${esc(o.outputElement || '(none)')}</span>${o.faults.length ? `<span class="badge warn">${o.faults.length} fault${o.faults.length > 1 ? 's' : ''}</span>` : ''}</div>
+            <div class="io"><span class="t" title="POST ${esc(o.path)}">POST ${esc(o.path)}</span></div></a>`;
         }
         html += '</div>';
       } else if (d.kind !== 'xsd') html += '<p class="note">This WSDL declares no operations.</p>';
       if (d.elements && d.elements.length) {
         html += `<div class="section-h"><h2>Global elements</h2><span class="c">${d.elements.length}</span></div><div class="op-grid">`;
         for (const e of d.elements) {
-          html += `<a class="card op-card" href="${elHref(d.id, e.name)}"><div class="h"><i class="k-dot el"></i>${esc(e.name)}<span class="badge" style="margin-left:auto">${e.fields.length} fields</span></div>
-            ${e.doc ? `<div class="d">${esc(e.doc)}</div>` : ''}<div class="io">${esc(e.ns)}</div></a>`;
+          html += `<a class="card op-card" href="${elHref(d.id, e.name)}"><div class="h"><i class="k-dot el"></i><span class="nm" title="${esc(e.name)}">${esc(e.name)}</span><span class="bd"><span class="badge">${e.fields.length} fields</span>${star(favKey.el(d.id, e.name))}</span></div>
+            ${e.doc ? `<div class="d">${esc(e.doc)}</div>` : ''}<div class="io"><span class="t" title="${esc(e.ns)}">${esc(e.ns)}</span></div></a>`;
         }
         html += '</div>';
       }
@@ -373,7 +546,7 @@
       const text = fmt === 'json' ? JSON.stringify(JSON.parse(raw), null, 2) : raw;
       html += `<div class="toolbar"><div class="seg" data-seg="specFmt">${['yaml', 'json'].map((f) => `<button data-v="${f}" class="${fmt === f ? 'on' : ''}">${f.toUpperCase()}</button>`).join('')}</div>
         <span class="c" style="color:var(--text-3);font-size:12px">${d.operations.length} paths · ${d.schemaCount} schemas</span>
-        <div class="row-actions"><button class="btn sm" data-copy="spec">Copy</button></div></div>
+        <div class="row-actions">${foldTools}<button class="btn sm" data-copy="spec">Copy</button></div></div>
         <div class="card"><div class="pane-b" style="max-height:none;border-radius:var(--radius)">${codeBlock(text, fmt)}</div></div>`;
       S.copy = { spec: text };
     } else if (tab === 'info') {
@@ -388,7 +561,7 @@
       const file = d.files.includes(S.ui.srcFile) ? S.ui.srcFile : d.source;
       const text = await fetch(`/api/source?path=${enc(file)}`).then((x) => x.text());
       html += `<div class="toolbar"><select id="src-file" class="btn" style="max-width:100%">${d.files.map((f) => `<option ${f === file ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>
-        <div class="row-actions"><button class="btn sm" data-copy="src">Copy</button></div></div>
+        <div class="row-actions">${foldTools}<button class="btn sm" data-copy="src">Copy</button></div></div>
         <div class="card"><div class="pane-b" style="border-radius:var(--radius)">${codeBlock(text, 'xml')}</div></div>`;
       S.copy = { src: text };
     } else if (tab === 'problems') {
@@ -420,7 +593,7 @@
   function pane({ id, label, cls, tabs, active, body, plain }) {
     return `<section class="card pane" id="${id}"><div class="pane-h"><span class="lbl ${cls || ''}"><i></i>${label}</span>
       <div class="tabs" data-pane="${id}">${tabs.map(([k, l]) => `<button data-v="${k}" class="${active === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="acts"><button class="btn sm" data-copy="${id}">Copy</button></div></div>
+      <div class="acts">${body.includes('class="code cv"') ? foldTools : ''}<button class="btn sm" data-copy="${id}">Copy</button></div></div>
       <div class="pane-b${plain ? ' plain' : ''}">${body}</div></section>`;
   }
 
@@ -459,7 +632,7 @@
     const ep = d.endpoints.find((e) => e.soapVersion === v && e.address) || d.endpoints.find((e) => e.address);
     const html = `<div class="page">
       <div class="crumbs"><a href="#/">Catalogue</a><span>/</span><span>${esc(d.folder)}</span><span>/</span><a href="${svcHref(d.id)}">${esc(d.name)}</a></div>
-      <div class="title-row"><h1>${esc(op.name)}</h1><span class="badge">${esc(op.pattern)}</span><span class="badge">${esc(op.style)}/${esc(op.use || 'literal')}</span>
+      <div class="title-row"><h1>${esc(op.name)}</h1>${star(favKey.op(d.id, op.name), 'lg')}<span class="badge">${esc(op.pattern)}</span><span class="badge">${esc(op.style)}/${esc(op.use || 'literal')}</span>
         ${op.inferred ? '<span class="badge xsd">inferred from XSD</span>' : ''}${op.faults.length ? `<span class="badge warn">${op.faults.length} fault${op.faults.length > 1 ? 's' : ''}</span>` : ''}
         <div class="row-actions"><a class="btn" href="/docs/${enc(d.id)}#/${enc(d.name)}/${enc(op.openapi.paths[op.path]?.post?.operationId || '')}" target="_blank" rel="noopener">Swagger UI ↗</a>
         <a class="btn" href="/api/services/${enc(d.id)}/operations/${enc(op.name)}/openapi.yaml" target="_blank">Spec YAML</a></div></div>
@@ -502,7 +675,7 @@
       right: right === 'json' ? jsonText : right === 'yaml' ? specYaml : specJson };
     main().innerHTML = `<div class="page">
       <div class="crumbs"><a href="#/">Catalogue</a><span>/</span><span>${esc(d.folder)}</span><span>/</span><a href="${svcHref(d.id)}">${esc(d.name)}</a></div>
-      <div class="title-row"><h1>${esc(el.name)}</h1><span class="badge xsd">global element</span>
+      <div class="title-row"><h1>${esc(el.name)}</h1>${star(favKey.el(d.id, el.name), 'lg')}<span class="badge xsd">global element</span>
         <div class="row-actions"><a class="btn" href="/docs/${enc(d.id)}" target="_blank" rel="noopener">Swagger UI ↗</a></div></div>
       ${el.doc ? `<p class="sub">${esc(el.doc)}</p>` : ''}
       <div class="meta"><span><b>Namespace</b><code>${esc(el.ns || '(none)')}</code></span><span><b>Component</b><code>#/components/schemas/${esc(el.component)}</code></span></div>
@@ -614,7 +787,31 @@
     if (e.target.closest('[data-problems]')) setTimeout(() => $('#problems')?.scrollIntoView({ behavior: 'smooth' }), 50);
   });
 
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-fav]');
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFav(b.dataset.fav);
+  }, true);
+
   main().addEventListener('click', async (e) => {
+    const fold = e.target.closest('.cv .fold');
+    if (fold) { setFold(fold, !fold.classList.contains('closed')); return; }
+    const ph = e.target.closest('.cv .ph');
+    if (ph) { setFold(ph.closest('.r').querySelector('.fold'), false); return; }
+    const all = e.target.closest('[data-cv]');
+    if (all) {
+      const cv = (all.closest('.pane') || all.closest('.page')).querySelector('.cv');
+      if (!cv) return;
+      const btns = [...cv.querySelectorAll('.fold')];
+      const anyClosed = btns.some((b) => b.classList.contains('closed'));
+      if (anyClosed) btns.forEach((b) => setFold(b, false));
+      else btns.filter((b) => Number(b.dataset.d) >= 1).forEach((b) => setFold(b, true));
+      all.title = anyClosed ? 'Collapse all' : 'Expand all';
+      all.classList.toggle('on', !anyClosed);
+      return;
+    }
     const seg = e.target.closest('[data-seg] button');
     if (seg && !seg.disabled) {
       const key = seg.parentElement.dataset.seg;

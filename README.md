@@ -2,6 +2,8 @@
 
 Drop WSDL and XSD files into a folder. Contract Hub lists every service and operation with sample SOAP request and response payloads, and shows an auto-generated OpenAPI 3.0 spec beside them.
 
+![Contract Hub operation view: SOAP request sample on the left, OpenAPI JSON sample on the right](docs/screenshot.png)
+
 ## Quick start
 
 Requires Docker.
@@ -54,6 +56,10 @@ Type in the search bar, or press `/` to focus it. Narrow the search with prefixe
 | `dir:` | `dir:response` | Fields in requests, responses or faults |
 
 Combine them freely, e.g. `op:create field:weight`. The sidebar also filters by folder and protocol.
+
+## Favorites
+
+Click the ☆ next to any service, operation or element to pin it. Favorites appear at the top of the sidebar and on the dashboard. They are saved in your browser, so each person keeps their own list.
 
 ## Operation view
 
