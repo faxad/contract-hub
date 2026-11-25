@@ -5,4 +5,5 @@ services:
       - "8090:8090"
     volumes:
       - ./catalogue:/app/catalogue
+      - ./logs:/app/logs:ro
     restart: unless-stopped

@@ -8,7 +8,9 @@
     "dev": "node --watch-path=lib --watch-path=server.js server.js",
     "demo": "CATALOGUE_DIR=examples node server.js"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
     "chokidar": "^4.0.3",

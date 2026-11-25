@@ -1,4 +1,5 @@
 node_modules
 catalogue
+logs
 .DS_Store
 *.zip

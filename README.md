@@ -57,6 +57,18 @@ Type in the search bar, or press `/` to focus it. Narrow the search with prefixe
 
 Combine them freely, e.g. `op:create field:weight`. The sidebar also filters by folder and protocol.
 
+## Logged examples
+
+Drop CSV (or TSV) exports of real calls into `logs/`. Each row is matched to an operation and shown in an **Examples** section under that operation: the logged SOAP XML next to the OpenAPI JSON, in the same layout as the samples. Files reload automatically when they're added, changed or removed.
+
+- **Required columns:** `Service`, `Operation`, and `Request` and/or `Response`. Header names are case-insensitive. `Request Extra`, `Request Extra 2`… are appended to `Request` (the same for `Response`) for payloads split across cells.
+- **Optional columns:** `Request Timestamp`, `Response Timestamp`, `Channel`, `Server`, `Error Type`, `Error Message`, `Error Number`. These are shown with each example.
+- **Matching:** a row is matched by service and operation name. If that fails, it's matched by the request's root element. Rows that match nothing are listed under Problems.
+- A bare SOAP body is wrapped in an envelope for display, and JSON is converted using the operation's schema, so lists are arrays and numbers are numbers.
+- Use ◀ ▶ or the picker to step through examples; the newest is shown first.
+
+Columns such as user, customer, IP and session IDs are never shown or sent to the browser. The payloads themselves are shown as logged, though, so anyone who can open Contract Hub can read them. `logs/` is ignored by git.
+
 ## Favorites
 
 Click the ☆ next to any service, operation or element to pin it. Favorites appear at the top of the sidebar and on the dashboard. They are saved in your browser, so each person keeps their own list.
@@ -85,6 +97,7 @@ npm run demo       # serves ./examples instead
 |---|---|---|
 | `PORT` | `8090` | HTTP port |
 | `CATALOGUE_DIR` | `./catalogue` | Folder to watch |
+| `LOGS_DIR` | `./logs` | Folder of CSV/TSV call logs shown as examples |
 | `WATCH_INTERVAL` | `2000` | Fallback folder scan interval, in ms |
 | `MAX_UPLOAD_MB` | `20` | Upload size limit per file |
 
@@ -107,5 +120,7 @@ To use another port with Docker, change `"8090:8090"` in `docker-compose.yml` to
 | `GET /api/services/:id` | Operations, samples and field tables |
 | `GET /api/services/:id/openapi.yaml` (or `.json`) | Full OpenAPI spec |
 | `GET /api/search?q=…&kind=field` | Search results |
+| `GET /api/services/:id/operations/:op/examples` | Logged examples (metadata) |
+| `GET /api/services/:id/operations/:op/examples/:n` | One example, rendered as XML and JSON |
 | `POST /api/upload` | Upload files (multipart `files`) |
 | `POST /api/rescan` | Force a rescan |

@@ -6,12 +6,14 @@ const multer = require('multer');
 const yaml = require('js-yaml');
 const swaggerUiDist = require('swagger-ui-dist');
 const { Catalogue } = require('./lib/catalogue');
+const { renderPayload } = require('./lib/examples');
 
 const PORT = Number(process.env.PORT) || 8090;
 const CATALOGUE_DIR = path.resolve(process.env.CATALOGUE_DIR || path.join(__dirname, 'catalogue'));
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB) || 20;
+const LOGS_DIR = path.resolve(process.env.LOGS_DIR || path.join(__dirname, 'logs'));
 
-const catalogue = new Catalogue(CATALOGUE_DIR).start();
+const catalogue = new Catalogue(CATALOGUE_DIR, { logsDir: LOGS_DIR }).start();
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
@@ -29,6 +31,8 @@ app.get('/api/catalogue', (req, res) => {
     version: catalogue.version,
     builtAt: catalogue.builtAt,
     directory: CATALOGUE_DIR,
+    logsDirectory: LOGS_DIR,
+    examples: catalogue.examples.total,
     services: catalogue.entries.map((e) => catalogue.summary(e)),
     problems: catalogue.problems,
   });
@@ -51,6 +55,7 @@ app.get('/api/services/:id', (req, res) => {
   const e = entryOr404(req, res);
   if (!e) return;
   const { openapi, ...rest } = e;
+  rest.operations = rest.operations.map((o) => ({ ...o, exampleCount: catalogue.examples.count(e.id, o.name) }));
   res.json(rest);
 });
 
@@ -69,6 +74,36 @@ app.get('/api/services/:id/operations/:op/openapi.:fmt(json|yaml)', (req, res) =
   if (!op) return notFound(res, 'Operation');
   if (req.params.fmt === 'yaml') res.type('application/yaml').send(toYaml(op.openapi));
   else res.json(op.openapi);
+});
+
+/* Logged examples: a metadata list, then one rendered example at a time so large logs stay fast. */
+const opOr404 = (req, res) => {
+  const e = entryOr404(req, res);
+  if (!e) return null;
+  const op = e.operations.find((o) => o.name === req.params.op);
+  if (!op) { notFound(res, 'Operation'); return null; }
+  return { e, op, list: catalogue.examples.list(e.id, op.name) };
+};
+
+app.get('/api/services/:id/operations/:op/examples', (req, res) => {
+  const hit = opOr404(req, res);
+  if (!hit) return;
+  res.json({ version: catalogue.version, total: hit.list.length, items: hit.list.map((x, n) => ({ n, file: x.file, row: x.row, ...x.meta })) });
+});
+
+app.get('/api/services/:id/operations/:op/examples/:n', (req, res) => {
+  const hit = opOr404(req, res);
+  if (!hit) return;
+  const x = hit.list[Number(req.params.n)];
+  if (!x) return notFound(res, 'Example');
+  const { e, op } = hit;
+  const soapVersion = (e.soapVersions || [])[0] || '1.1';
+  const side = (raw, rows) => renderPayload(raw, { rows, soapVersion, rootName: rows[0] && rows[0].name, rootNs: rows[0] && rows[0].ns });
+  res.json({
+    n: Number(req.params.n), total: hit.list.length, file: x.file, row: x.row, ...x.meta,
+    request: side(x.request, op.fields.request),
+    response: side(x.response, op.fields.response),
+  });
 });
 
 /** Raw source files, restricted to the catalogue directory. */
@@ -144,4 +179,5 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 app.listen(PORT, () => {
   console.log(`Contract Hub running on http://localhost:${PORT}`);
   console.log(`Catalogue folder: ${CATALOGUE_DIR}`);
+  console.log(`Logs folder: ${LOGS_DIR}`);
 });

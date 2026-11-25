@@ -336,3 +336,19 @@ table.simple { width: 100%; border-collapse: collapse; font-size: 13px; }
 .fav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 10px; }
 .fav-card { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; color: var(--text); min-width: 0; }
 .fav-card:hover { border-color: var(--accent); text-decoration: none; }
+
+/* logged examples */
+.ex-section { margin-top: 8px; }
+.ex-section .section-h { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ex-section .section-h .c { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ex-bar { margin-top: 4px; }
+.ex-nav { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 360px; }
+.ex-nav select { flex: 1 1 auto; min-width: 0; max-width: 560px; height: 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); padding: 0 8px; font-family: var(--mono); font-size: 12px; }
+.ex-nav .icon-btn.sm:disabled { opacity: .35; cursor: default; }
+.ex-nav .icon-btn.sm svg { fill: none; }
+.ex-pos { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.ex-meta { margin: 0 0 12px; align-items: center; }
+.ex-note { font-size: 12px; color: var(--text-3); font-style: italic; }
+.ex-empty { padding: 18px 20px; color: var(--text-2); font-size: 13px; }
+.ex-empty code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+.ex-section .pane { position: static; max-height: 640px; }

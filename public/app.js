@@ -14,9 +14,11 @@
     kind: '',
     expanded: new Set(load('expanded', [])),
     favs: new Set(load('favs', [])),
+    exCache: new Map(),
+    exPick: new Map(),
     showAll: null,
     kb: -1,
-    ui: { dir: 'request', soap: null, left: 'sample', right: 'json', fieldFilter: '', svcTab: 'ops', specFmt: 'yaml', srcFile: null },
+    ui: { exDir: 'request', dir: 'request', soap: null, left: 'sample', right: 'json', fieldFilter: '', svcTab: 'ops', specFmt: 'yaml', srcFile: null },
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -223,6 +225,7 @@
     S.index = idx.items;
     S.svcMeta = new Map(cat.services.map((s) => [s.id, s]));
     S.details.clear();
+    S.exCache.clear();
     fillFolders();
   }
   async function detail(id) {
@@ -465,6 +468,7 @@
         <div class="card stat"><div class="n">${ops}</div><div class="l">Operations</div></div>
         <div class="card stat"><div class="n">${fields.toLocaleString()}</div><div class="l">Fields</div></div>
         <div class="card stat"><div class="n">${types}</div><div class="l">Schema types</div></div>
+        <div class="card stat"><div class="n">${svcs.reduce((n, x) => n + (x.examples || 0), 0)}</div><div class="l">Logged examples</div></div>
         <div class="card stat"><div class="n" style="color:${c.problems.length ? 'var(--warn)' : 'var(--ok)'}">${c.problems.length}</div><div class="l">Problems</div></div>
       </div>`;
     if (!c.services.length) {
@@ -527,7 +531,7 @@
         html += '<div class="op-grid">';
         for (const o of d.operations) {
           html += `<a class="card op-card" href="${opHref(d.id, o.name)}"><div class="h"><i class="k-dot${o.output ? '' : ' oneway'}"></i><span class="nm">${softBreaks(o.name)}</span>${star(favKey.op(d.id, o.name))}</div>
-            <div class="tags">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span></div>
+            <div class="tags">${o.inferred ? '<span class="badge xsd">inferred</span>' : ''}<span class="badge">${esc(o.pattern)}</span>${o.exampleCount ? `<span class="badge ok">${o.exampleCount} example${o.exampleCount === 1 ? '' : 's'}</span>` : ''}</div>
             ${o.doc ? `<div class="d">${esc(o.doc)}</div>` : ''}
             <div class="io"><span class="t" title="${esc(o.inputElement || '')}">${esc(o.inputElement || '—')}</span><span class="ar">→</span><span class="t" title="${esc(o.outputElement || '')}">${esc(o.outputElement || '(none)')}</span>${o.faults.length ? `<span class="badge warn">${o.faults.length} fault${o.faults.length > 1 ? 's' : ''}</span>` : ''}</div>
             <div class="io"><span class="t" title="POST ${esc(o.path)}">POST ${esc(o.path)}</span></div></a>`;
@@ -658,9 +662,82 @@
           body: S.ui.right === 'json' ? (jsonText == null ? `<div class="note">${dir === 'response' ? 'One-way operation: no response body' : 'No body'}</div>` : codeBlock(jsonText, 'json'))
             : S.ui.right === 'yaml' ? codeBlock(specYaml, 'yaml') : codeBlock(specJson, 'json') })}
       </div>
+      <section id="ex-section" class="ex-section"></section>
     </div>`;
     main().innerHTML = html;
     afterFields(focus);
+    S.exCtx = { d, op };
+    renderExamples();
+  }
+
+  /* ---------- logged examples (from CSV files in logs/) ---------- */
+  const exTime = (t) => (t ? String(t).replace('T', ' ').replace(/\.\d+/, '').replace(/([+-]\d{2}:?\d{2}|Z)$/, '').trim() : '');
+  const exStatus = (st) => `<span class="badge ${st === 'ok' ? 'ok' : st === 'fault' ? 'warn' : 'err'}">${st === 'ok' ? 'OK' : st === 'fault' ? 'SOAP fault' : 'Error'}</span>`;
+  function exCached(url) {
+    if (!S.exCache.has(url)) S.exCache.set(url, api(url).catch((e) => { S.exCache.delete(url); throw e; }));
+    return S.exCache.get(url);
+  }
+
+  async function renderExamples() {
+    const host = $('#ex-section');
+    if (!host || !S.exCtx) return;
+    const { d, op } = S.exCtx;
+    const seq = renderSeq;
+    const total = op.exampleCount || 0;
+    const head = (c) => `<div class="section-h" id="examples"><h2>Examples</h2><span class="c">${c}</span></div>`;
+    if (!total) {
+      host.innerHTML = `${head('none logged')}<div class="card ex-empty">No logged calls for this operation yet. Add a CSV file with
+        <code>Service</code>, <code>Operation</code>, <code>Request</code> and <code>Response</code> columns to <code>logs/</code>; it loads automatically.</div>`;
+      return;
+    }
+    const base = `/api/services/${enc(d.id)}/operations/${enc(op.name)}/examples`;
+    const key = `${d.id}/${op.name}`;
+    let list;
+    let ex;
+    try {
+      list = await exCached(`${base}?v=${S.cat.version}`);
+      const n = Math.max(0, Math.min(S.exPick.get(key) || 0, list.total - 1));
+      S.exPick.set(key, n);
+      ex = await exCached(`${base}/${n}?v=${S.cat.version}`);
+    } catch (e) {
+      if (seq === renderSeq) host.innerHTML = `${head('')}<div class="card ex-empty">Could not load examples: ${esc(e.message)}</div>`;
+      return;
+    }
+    if (seq !== renderSeq || $('#ex-section') !== host) return; // navigated away meanwhile
+    const n = ex.n;
+    const dir = S.ui.exDir === 'response' ? 'response' : 'request';
+    const side = ex[dir];
+    const files = [...new Set(list.items.map((x) => x.file))];
+    const label = (x) => [`#${x.n + 1}`, exTime(x.requestTime) || `row ${x.row}`, x.channel, x.status === 'ok' ? 'OK' : x.status === 'fault' ? 'SOAP fault' : 'Error',
+      x.durationMs != null ? `${x.durationMs} ms` : null].filter(Boolean).join('  ·  ');
+    S.copy = { ...(S.copy || {}), exl: side.xml, exr: side.json };
+    const empty = (what) => `<div class="note">${esc(side.note && !side[what] ? side.note : `No ${what === 'xml' ? 'XML' : 'JSON'} for this ${dir}`)}</div>`;
+    host.innerHTML = `${head(`${total} logged call${total === 1 ? '' : 's'} · ${files.map(esc).join(', ')}`)}
+      <div class="toolbar ex-bar">
+        <div class="ex-nav">
+          <button class="icon-btn sm" data-ex="prev" title="Previous example" ${n === 0 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <select id="ex-pick" aria-label="Choose example">${list.items.map((x) => `<option value="${x.n}" ${x.n === n ? 'selected' : ''}>${esc(label(x))}</option>`).join('')}</select>
+          <button class="icon-btn sm" data-ex="next" title="Next example" ${n >= total - 1 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="ex-pos">${n + 1} of ${total}</span>
+        </div>
+        <div class="seg" data-exseg>${[['request', 'Request'], ['response', 'Response']].map(([k, l]) => `<button data-v="${k}" class="${dir === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      </div>
+      <div class="meta ex-meta">
+        ${exStatus(ex.status)}
+        ${ex.requestTime ? `<span><b>Requested</b><code>${esc(exTime(ex.requestTime))}</code></span>` : ''}
+        ${ex.durationMs != null ? `<span><b>Duration</b><code>${ex.durationMs} ms</code></span>` : ''}
+        ${ex.channel ? `<span><b>Channel</b><code>${esc(ex.channel)}</code></span>` : ''}
+        ${ex.server ? `<span><b>Server</b><code>${esc(ex.server)}</code></span>` : ''}
+        ${ex.error ? `<span><b>Error</b><code>${esc(ex.error)}</code></span>` : ''}
+        <span><b>Source</b><code>${esc(ex.file)} · row ${ex.row}</code></span>
+        ${side.note ? `<span class="ex-note">${esc(side.note)}</span>` : ''}
+      </div>
+      <div class="split">
+        ${pane({ id: 'exl', label: 'WSDL · SOAP', tabs: [['xml', dir === 'request' ? 'Logged request XML' : 'Logged response XML']], active: 'xml',
+          body: side.xml ? codeBlock(side.xml, 'xml') : empty('xml') })}
+        ${pane({ id: 'exr', label: 'OpenAPI 3.0', cls: 'oas', tabs: [['json', dir === 'request' ? 'Logged request JSON' : 'Logged response JSON']], active: 'json',
+          body: side.json ? codeBlock(side.json, 'json') : empty('json') })}
+      </div>`;
   }
 
   async function renderEl(r) {
@@ -799,6 +876,16 @@
   }, true);
 
   main().addEventListener('click', async (e) => {
+    const exNav = e.target.closest('[data-ex]');
+    if (exNav && !exNav.disabled && S.exCtx) {
+      const key = `${S.exCtx.d.id}/${S.exCtx.op.name}`;
+      S.exPick.set(key, (S.exPick.get(key) || 0) + (exNav.dataset.ex === 'next' ? 1 : -1));
+      renderExamples();
+      return;
+    }
+    const exSeg = e.target.closest('[data-exseg] button');
+    if (exSeg) { S.ui.exDir = exSeg.dataset.v; renderExamples(); return; }
+    if (e.target.closest('#ex-section [data-pane] button')) return; // single-tab example panes
     const fold = e.target.closest('.cv .fold');
     if (fold) { setFold(fold, !fold.classList.contains('closed')); return; }
     const ph = e.target.closest('.cv .ph');
@@ -843,6 +930,10 @@
   });
   main().addEventListener('change', (e) => {
     if (e.target.id === 'src-file') { S.ui.srcFile = e.target.value; render(); }
+    if (e.target.id === 'ex-pick' && S.exCtx) {
+      S.exPick.set(`${S.exCtx.d.id}/${S.exCtx.op.name}`, Number(e.target.value));
+      renderExamples();
+    }
   });
   window.addEventListener('hashchange', () => { main().scrollTop = 0; render(); });
 
@@ -933,7 +1024,8 @@
       if (s.added.length) parts.push(`added ${s.added.join(', ')}`);
       if (s.changed.length) parts.push(`updated ${s.changed.join(', ')}`);
       if (s.removed.length) parts.push(`removed ${s.removed.join(', ')}`);
-      if (parts.length) toast(`Catalogue ${parts.join('; ')}`);
+      if (s.examplesReloaded) toast(`Examples reloaded: ${s.examples} logged call${s.examples === 1 ? '' : 's'}`);
+      else if (parts.length) toast(`Catalogue ${parts.join('; ')}`);
       else if (s.reason === 'manual rescan') toast(`Rescanned: ${s.services} services, ${s.problems} problems`);
     });
     es.onerror = () => { live.className = 'live off'; live.lastElementChild.textContent = 'Reconnecting'; };
