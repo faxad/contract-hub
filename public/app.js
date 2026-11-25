@@ -16,6 +16,9 @@
     favs: new Set(load('favs', [])),
     exCache: new Map(),
     exPick: new Map(),
+    exFilter: new Map(),
+    favMeta: load('favMeta', {}),
+    exAlive: null,
     showAll: null,
     kb: -1,
     ui: { exDir: 'request', dir: 'request', soap: null, left: 'sample', right: 'json', fieldFilter: '', svcTab: 'ops', specFmt: 'yaml', srcFile: null },
@@ -226,6 +229,7 @@
     S.svcMeta = new Map(cat.services.map((s) => [s.id, s]));
     S.details.clear();
     S.exCache.clear();
+    await checkFavExamples();
     fillFolders();
   }
   async function detail(id) {
@@ -357,11 +361,12 @@
     svc: (id) => `s:${id}`,
     op: (id, op) => `o:${id}/${op}`,
     el: (id, el) => `e:${id}/${el}`,
+    ex: (id, op, exId) => `x:${id}/${op}/${exId}`,
   };
   const STAR = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l2.27 4.6 5.08.74-3.68 3.58.87 5.06L10 14.2l-4.54 2.38.87-5.06L2.65 7.94l5.08-.74z"/></svg>';
-  function star(key, cls = '') {
+  function star(key, cls = '', label = '') {
     const on = S.favs.has(key);
-    return `<button class="star${on ? ' on' : ''}${cls ? ` ${cls}` : ''}" data-fav="${esc(key)}" aria-pressed="${on}" title="${on ? 'Remove from favorites' : 'Add to favorites'}">${STAR}</button>`;
+    return `<button class="star${on ? ' on' : ''}${cls ? ` ${cls}` : ''}" data-fav="${esc(key)}"${label ? ` data-fav-label="${esc(label)}"` : ''} aria-pressed="${on}" title="${on ? 'Remove from favorites' : 'Add to favorites'}">${STAR}</button>`;
   }
   /** Favorites that still resolve to something in the catalogue, in the order they were added. */
   function favItems() {
@@ -376,14 +381,26 @@
       const svc = S.svcMeta.get(rest.slice(0, i));
       const name = rest.slice(i + 1);
       if (!svc) return null;
+      if (type === 'x') {
+        const j = name.lastIndexOf('/');
+        const op = name.slice(0, j);
+        const exId = name.slice(j + 1);
+        if (!svc.operations.includes(op) || (S.exAlive && !S.exAlive.has(exId))) return null;
+        return { k, type: 'ex', svc, name: op, sub: `Example · ${(S.favMeta[k] || {}).label || exId}`, href: opHref(svc.id, op, `ex=${enc(exId)}`) };
+      }
       if (type === 'o' && svc.operations.includes(name)) return { k, type: 'op', svc, name, href: opHref(svc.id, name) };
       if (type === 'e' && svc.elements.includes(name)) return { k, type: 'el', svc, name, href: elHref(svc.id, name) };
       return null;
     }).filter(Boolean);
   }
-  function toggleFav(key) {
-    if (S.favs.has(key)) S.favs.delete(key); else S.favs.add(key);
+  function toggleFav(key, label) {
+    if (S.favs.has(key)) { S.favs.delete(key); delete S.favMeta[key]; } else {
+      S.favs.add(key);
+      if (label) S.favMeta[key] = { label };
+      if (key.startsWith('x:') && S.exAlive) S.exAlive.add(key.slice(key.lastIndexOf('/') + 1));
+    }
     save('favs', [...S.favs]);
+    save('favMeta', S.favMeta);
     const on = S.favs.has(key);
     $$('[data-fav]').filter((b) => b.dataset.fav === key).forEach((b) => {
       b.classList.toggle('on', on);
@@ -394,7 +411,16 @@
     if (parseRoute().view === 'home') renderHome();
   }
   const favIcon = (f) => (f.type === 'svc' ? `<span class="badge ${f.svc.kind === 'xsd' ? 'xsd' : 'soap'}">${f.svc.kind === 'xsd' ? 'XSD' : 'SVC'}</span>`
-    : `<i class="k-dot${f.type === 'el' ? ' el' : ''}"></i>`);
+    : f.type === 'ex' ? '<span class="badge ok">EX</span>' : `<i class="k-dot${f.type === 'el' ? ' el' : ''}"></i>`);
+  /** Ask the server which favorite examples still exist (logs can change between visits). */
+  async function checkFavExamples() {
+    const ids = [...S.favs].filter((k) => k.startsWith('x:')).map((k) => k.slice(k.lastIndexOf('/') + 1));
+    if (!ids.length) { S.exAlive = new Set(); return; }
+    try {
+      const { found } = await api(`/api/examples/lookup?ids=${ids.map(enc).join(',')}`);
+      S.exAlive = new Set(Object.keys(found));
+    } catch { S.exAlive = null; }
+  }
 
   function renderNav() {
     if (!S.cat) return;
@@ -410,7 +436,7 @@
       for (const f of favs) {
         const active = (f.type === 'svc' && r.view === 'service' && r.id === f.svc.id) || (f.type === 'op' && r.view === 'op' && r.id === f.svc.id && r.op === f.name)
           || (f.type === 'el' && r.view === 'el' && r.id === f.svc.id && r.el === f.name);
-        html += `<a class="fav-link${active ? ' active' : ''}" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span>${f.type === 'svc' ? '' : `<span class="s">${esc(f.svc.name)}</span>`}</span>${star(f.k)}</a>`;
+        html += `<a class="fav-link${active ? ' active' : ''}" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span>${f.type === 'svc' ? '' : `<span class="s">${esc(f.type === 'ex' ? f.sub : f.svc.name)}</span>`}</span>${star(f.k)}</a>`;
       }
       html += '</div>';
     }
@@ -480,7 +506,7 @@
       const favs = favItems();
       html += `<div class="section-h"><h2>Favorites</h2><span class="c">${favs.length ? favs.length : 'star a service or operation to pin it here'}</span></div>`;
       if (favs.length) {
-        html += `<div class="fav-grid">${favs.map((f) => `<a class="card fav-card" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span><span class="s">${f.type === 'svc' ? `${f.svc.operations.length} operations · ${esc(f.svc.folder)}` : `${esc(f.svc.name)} · ${f.type === 'op' ? 'operation' : 'element'}`}</span></span>${star(f.k)}</a>`).join('')}</div>`;
+        html += `<div class="fav-grid">${favs.map((f) => `<a class="card fav-card" href="${f.href}">${favIcon(f)}<span class="nm"><span class="t">${esc(f.name)}</span><span class="s">${f.type === 'svc' ? `${f.svc.operations.length} operations · ${esc(f.svc.folder)}` : `${esc(f.svc.name)} · ${f.type === 'op' ? 'operation' : f.type === 'ex' ? esc(f.sub) : 'element'}`}</span></span>${star(f.k)}</a>`).join('')}</div>`;
       }
       html += `<div class="section-h"><h2>Services</h2><span class="c">most recently changed first</span></div><div class="svc-grid">`;
       for (const s of recent) {
@@ -667,7 +693,13 @@
     main().innerHTML = html;
     afterFields(focus);
     S.exCtx = { d, op };
+    const wantEx = r.params.get('ex');
+    if (wantEx) {
+      S.exPick.set(exKey(), wantEx);
+      S.exFilter.delete(exKey());
+    }
     renderExamples();
+    if (wantEx) setTimeout(() => $('#examples')?.scrollIntoView({ behavior: 'smooth' }), 400);
   }
 
   /* ---------- logged examples (from CSV files in logs/) ---------- */
@@ -678,47 +710,128 @@
     return S.exCache.get(url);
   }
 
-  async function renderExamples() {
+  const exKey = () => `${S.exCtx.d.id}/${S.exCtx.op.name}`;
+  const exFilter = () => S.exFilter.get(exKey()) || { q: '', status: '' };
+
+  /** Examples section shell: heading + search bar (drawn once per operation so typing keeps focus) + results. */
+  function renderExamples() {
     const host = $('#ex-section');
     if (!host || !S.exCtx) return;
-    const { d, op } = S.exCtx;
-    const seq = renderSeq;
+    const { op } = S.exCtx;
     const total = op.exampleCount || 0;
-    const head = (c) => `<div class="section-h" id="examples"><h2>Examples</h2><span class="c">${c}</span></div>`;
     if (!total) {
-      host.innerHTML = `${head('none logged')}<div class="card ex-empty">No logged calls for this operation yet. Add a CSV file with
+      host.innerHTML = `<div class="section-h" id="examples"><h2>Examples</h2><span class="c">none logged</span></div><div class="card ex-empty">No logged calls for this operation yet. Add a CSV file with
         <code>Service</code>, <code>Operation</code>, <code>Request</code> and <code>Response</code> columns to <code>logs/</code>; it loads automatically.</div>`;
       return;
     }
+    const f = exFilter();
+    host.innerHTML = `<div class="section-h" id="examples"><h2>Examples</h2><span class="c" id="ex-sub"></span></div>
+      <div class="ex-filter">
+        <div class="ex-search">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 014.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z"/></svg>
+          <input id="ex-q" type="search" autocomplete="off" spellcheck="false" value="${esc(f.q)}"
+                 placeholder="Search these examples: keywords, &quot;a phrase&quot; or Field=value (e.g. CurrentStatus=DELIVERED)">
+        </div>
+        <select id="ex-status" aria-label="Filter by status">
+          ${[['', 'All statuses'], ['ok', 'OK'], ['fault', 'SOAP fault'], ['error', 'Error']].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <span class="ex-count" id="ex-count"></span>
+      </div>
+      <div id="ex-body"></div>`;
+    renderExampleBody();
+  }
+
+  /** Highlight query terms inside rendered code, returning the first match. */
+  function markTerms(root, terms) {
+    if (!root || !terms.length) return null;
+    const re = new RegExp(terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((x, y) => y.length - x.length).join('|'), 'gi');
+    let first = null;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.c') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const text = node.data;
+      re.lastIndex = 0;
+      if (!re.test(text)) continue;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      let m;
+      while ((m = re.exec(text))) {
+        if (m.index > last) frag.append(text.slice(last, m.index));
+        const mk = document.createElement('mark');
+        mk.className = 'hit';
+        mk.textContent = m[0];
+        frag.append(mk);
+        if (!first) first = mk;
+        last = m.index + m[0].length;
+        if (!m[0].length) re.lastIndex++;
+      }
+      if (last < text.length) frag.append(text.slice(last));
+      node.replaceWith(frag);
+    }
+    return first;
+  }
+
+  function scrollPaneTo(mark) {
+    const pb = mark && mark.closest('.pane-b');
+    if (!pb) return;
+    const r = mark.getBoundingClientRect();
+    const p = pb.getBoundingClientRect();
+    pb.scrollTop += r.top - p.top - pb.clientHeight / 3;
+    pb.scrollLeft += Math.max(0, r.left - p.left - pb.clientWidth / 2);
+  }
+
+  async function renderExampleBody() {
+    const body = $('#ex-body');
+    if (!body || !S.exCtx) return;
+    const { d, op } = S.exCtx;
+    const seq = renderSeq;
+    const key = exKey();
+    const f = exFilter();
     const base = `/api/services/${enc(d.id)}/operations/${enc(op.name)}/examples`;
-    const key = `${d.id}/${op.name}`;
     let list;
     let ex;
     try {
-      list = await exCached(`${base}?v=${S.cat.version}`);
-      const n = Math.max(0, Math.min(S.exPick.get(key) || 0, list.total - 1));
-      S.exPick.set(key, n);
-      ex = await exCached(`${base}/${n}?v=${S.cat.version}`);
+      list = await exCached(`${base}?v=${S.cat.version}&q=${enc(f.q)}&status=${enc(f.status)}`);
+      if (seq !== renderSeq || $('#ex-body') !== body) return;
+      if (!list.items.length) {
+        $('#ex-count').textContent = `0 of ${list.total} match`;
+        $('#ex-sub').textContent = `${list.total} logged call${list.total === 1 ? '' : 's'}`;
+        body.innerHTML = `<div class="card ex-empty">No examples match ${f.q ? `<b>${esc(f.q)}</b>` : 'this filter'}${f.status ? ` with status <b>${esc(f.status)}</b>` : ''}.
+          <button class="btn sm" data-ex-clear>Clear search</button></div>`;
+        return;
+      }
+      let pos = list.items.findIndex((x) => x.id === S.exPick.get(key));
+      if (pos < 0) pos = 0;
+      S.exPick.set(key, list.items[pos].id);
+      ex = await exCached(`${base}/${list.items[pos].id}?v=${S.cat.version}`);
     } catch (e) {
-      if (seq === renderSeq) host.innerHTML = `${head('')}<div class="card ex-empty">Could not load examples: ${esc(e.message)}</div>`;
+      if (seq === renderSeq && $('#ex-body') === body) body.innerHTML = `<div class="card ex-empty">Could not load examples: ${esc(e.message)}</div>`;
       return;
     }
-    if (seq !== renderSeq || $('#ex-section') !== host) return; // navigated away meanwhile
-    const n = ex.n;
+    if (seq !== renderSeq || $('#ex-body') !== body) return; // navigated away meanwhile
+    const pos = list.items.findIndex((x) => x.id === ex.id);
+    const filtered = !!(f.q || f.status);
     const dir = S.ui.exDir === 'response' ? 'response' : 'request';
     const side = ex[dir];
     const files = [...new Set(list.items.map((x) => x.file))];
-    const label = (x) => [`#${x.n + 1}`, exTime(x.requestTime) || `row ${x.row}`, x.channel, x.status === 'ok' ? 'OK' : x.status === 'fault' ? 'SOAP fault' : 'Error',
-      x.durationMs != null ? `${x.durationMs} ms` : null].filter(Boolean).join('  ·  ');
+    const statusText = (st) => (st === 'ok' ? 'OK' : st === 'fault' ? 'SOAP fault' : 'Error');
+    const label = (x) => [`#${x.n + 1}`, exTime(x.requestTime) || `row ${x.row}`, x.channel, statusText(x.status),
+      x.durationMs != null ? `${x.durationMs} ms` : null, filtered && f.q ? `${x.hits} hit${x.hits === 1 ? '' : 's'}` : null].filter(Boolean).join('  ·  ');
+    $('#ex-sub').textContent = `${list.total} logged call${list.total === 1 ? '' : 's'} · ${files.join(', ')}`;
+    $('#ex-count').textContent = filtered ? `${list.matched} of ${list.total} match` : `${list.total} example${list.total === 1 ? '' : 's'}`;
     S.copy = { ...(S.copy || {}), exl: side.xml, exr: side.json };
     const empty = (what) => `<div class="note">${esc(side.note && !side[what] ? side.note : `No ${what === 'xml' ? 'XML' : 'JSON'} for this ${dir}`)}</div>`;
-    host.innerHTML = `${head(`${total} logged call${total === 1 ? '' : 's'} · ${files.map(esc).join(', ')}`)}
+    const favLabel = `${exTime(ex.requestTime) || `row ${ex.row}`} · ${statusText(ex.status)}`;
+    body.innerHTML = `
       <div class="toolbar ex-bar">
         <div class="ex-nav">
-          <button class="icon-btn sm" data-ex="prev" title="Previous example" ${n === 0 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <select id="ex-pick" aria-label="Choose example">${list.items.map((x) => `<option value="${x.n}" ${x.n === n ? 'selected' : ''}>${esc(label(x))}</option>`).join('')}</select>
-          <button class="icon-btn sm" data-ex="next" title="Next example" ${n >= total - 1 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          <span class="ex-pos">${n + 1} of ${total}</span>
+          <button class="icon-btn sm" data-ex="prev" title="Previous${filtered ? ' match' : ' example'}" ${pos === 0 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <select id="ex-pick" aria-label="Choose example">${list.items.map((x) => `<option value="${x.id}" ${x.id === ex.id ? 'selected' : ''}>${esc(label(x))}</option>`).join('')}</select>
+          <button class="icon-btn sm" data-ex="next" title="Next${filtered ? ' match' : ' example'}" ${pos >= list.items.length - 1 ? 'disabled' : ''}><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="ex-pos">${pos + 1} of ${list.items.length}${filtered ? ' matches' : ''}</span>
+          ${star(favKey.ex(d.id, op.name, ex.id), '', favLabel)}
         </div>
         <div class="seg" data-exseg>${[['request', 'Request'], ['response', 'Response']].map(([k, l]) => `<button data-v="${k}" class="${dir === k ? 'on' : ''}">${l}</button>`).join('')}</div>
       </div>
@@ -731,6 +844,7 @@
         ${ex.error ? `<span><b>Error</b><code>${esc(ex.error)}</code></span>` : ''}
         <span><b>Source</b><code>${esc(ex.file)} · row ${ex.row}</code></span>
         ${side.note ? `<span class="ex-note">${esc(side.note)}</span>` : ''}
+        <span class="ex-hits" id="ex-hits"></span>
       </div>
       <div class="split">
         ${pane({ id: 'exl', label: 'WSDL · SOAP', tabs: [['xml', dir === 'request' ? 'Logged request XML' : 'Logged response XML']], active: 'xml',
@@ -738,7 +852,17 @@
         ${pane({ id: 'exr', label: 'OpenAPI 3.0', cls: 'oas', tabs: [['json', dir === 'request' ? 'Logged request JSON' : 'Logged response JSON']], active: 'json',
           body: side.json ? codeBlock(side.json, 'json') : empty('json') })}
       </div>`;
+    const terms = [...(list.query.terms || []), ...(list.query.fields || []).map((x) => x.value)].filter((t) => t.length > 0);
+    if (terms.length) {
+      const l = markTerms($('#exl .cv'), terms);
+      const r = markTerms($('#exr .cv'), terms);
+      scrollPaneTo(l);
+      scrollPaneTo(r);
+      const n = $$('#ex-body mark.hit').length;
+      $('#ex-hits').textContent = n ? `${n} highlighted in this ${dir}` : `no matches in the ${dir}; switch to ${dir === 'request' ? 'Response' : 'Request'}`;
+    }
   }
+
 
   async function renderEl(r) {
     const d = await detail(r.id);
@@ -872,19 +996,20 @@
     if (!b) return;
     e.preventDefault();
     e.stopPropagation();
-    toggleFav(b.dataset.fav);
+    toggleFav(b.dataset.fav, b.dataset.favLabel);
   }, true);
 
   main().addEventListener('click', async (e) => {
     const exNav = e.target.closest('[data-ex]');
     if (exNav && !exNav.disabled && S.exCtx) {
-      const key = `${S.exCtx.d.id}/${S.exCtx.op.name}`;
-      S.exPick.set(key, (S.exPick.get(key) || 0) + (exNav.dataset.ex === 'next' ? 1 : -1));
-      renderExamples();
+      const opts = [...$('#ex-pick').options];
+      const i = opts.findIndex((o) => o.selected) + (exNav.dataset.ex === 'next' ? 1 : -1);
+      if (opts[i]) { S.exPick.set(exKey(), opts[i].value); renderExampleBody(); }
       return;
     }
+    if (e.target.closest('[data-ex-clear]') && S.exCtx) { S.exFilter.delete(exKey()); renderExamples(); return; }
     const exSeg = e.target.closest('[data-exseg] button');
-    if (exSeg) { S.ui.exDir = exSeg.dataset.v; renderExamples(); return; }
+    if (exSeg) { S.ui.exDir = exSeg.dataset.v; renderExampleBody(); return; }
     if (e.target.closest('#ex-section [data-pane] button')) return; // single-tab example panes
     const fold = e.target.closest('.cv .fold');
     if (fold) { setFold(fold, !fold.classList.contains('closed')); return; }
@@ -927,13 +1052,16 @@
   });
   main().addEventListener('input', (e) => {
     if (e.target.id === 'field-filter') { S.ui.fieldFilter = e.target.value; applyFieldFilter(); }
+    if (e.target.id === 'ex-q' && S.exCtx) {
+      clearTimeout(S.exQTimer);
+      const value = e.target.value;
+      S.exQTimer = setTimeout(() => { S.exFilter.set(exKey(), { ...exFilter(), q: value }); renderExampleBody(); }, 250);
+    }
   });
   main().addEventListener('change', (e) => {
     if (e.target.id === 'src-file') { S.ui.srcFile = e.target.value; render(); }
-    if (e.target.id === 'ex-pick' && S.exCtx) {
-      S.exPick.set(`${S.exCtx.d.id}/${S.exCtx.op.name}`, Number(e.target.value));
-      renderExamples();
-    }
+    if (e.target.id === 'ex-pick' && S.exCtx) { S.exPick.set(exKey(), e.target.value); renderExampleBody(); }
+    if (e.target.id === 'ex-status' && S.exCtx) { S.exFilter.set(exKey(), { ...exFilter(), status: e.target.value }); renderExampleBody(); }
   });
   window.addEventListener('hashchange', () => { main().scrollTop = 0; render(); });
 

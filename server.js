@@ -85,22 +85,43 @@ const opOr404 = (req, res) => {
   return { e, op, list: catalogue.examples.list(e.id, op.name) };
 };
 
+/** ?q=keywords (all must match; Name=value matches an element/attribute value) &status=ok|fault|error */
 app.get('/api/services/:id/operations/:op/examples', (req, res) => {
   const hit = opOr404(req, res);
   if (!hit) return;
-  res.json({ version: catalogue.version, total: hit.list.length, items: hit.list.map((x, n) => ({ n, file: x.file, row: x.row, ...x.meta })) });
+  const q = String(req.query.q || '').slice(0, 500);
+  const status = ['ok', 'fault', 'error'].includes(req.query.status) ? req.query.status : null;
+  const { query, items } = catalogue.examples.search(hit.e.id, hit.op.name, { q, status });
+  res.json({
+    version: catalogue.version, total: hit.list.length, matched: items.length, query,
+    items: items.map(({ n, hits, x }) => ({ n, id: x.id, hits, file: x.file, row: x.row, ...x.meta })),
+  });
+});
+
+/** Which favorite example ids still exist (and where): ?ids=x1,x2 */
+app.get('/api/examples/lookup', (req, res) => {
+  const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 500);
+  const found = {};
+  for (const id of ids) {
+    const f = catalogue.examples.byId.get(id);
+    if (f) found[id] = { service: f.entryId, op: f.op, requestTime: f.example.meta.requestTime, status: f.example.meta.status, channel: f.example.meta.channel };
+  }
+  res.json({ version: catalogue.version, found });
 });
 
 app.get('/api/services/:id/operations/:op/examples/:n', (req, res) => {
   const hit = opOr404(req, res);
   if (!hit) return;
-  const x = hit.list[Number(req.params.n)];
+  // :n is a position, or a stable example id ("x…")
+  const ref = req.params.n;
+  const n = /^x[0-9a-f]/.test(ref) ? hit.list.findIndex((y) => y.id === ref) : Number(ref);
+  const x = hit.list[n];
   if (!x) return notFound(res, 'Example');
   const { e, op } = hit;
   const soapVersion = (e.soapVersions || [])[0] || '1.1';
   const side = (raw, rows) => renderPayload(raw, { rows, soapVersion, rootName: rows[0] && rows[0].name, rootNs: rows[0] && rows[0].ns });
   res.json({
-    n: Number(req.params.n), total: hit.list.length, file: x.file, row: x.row, ...x.meta,
+    n, id: x.id, total: hit.list.length, file: x.file, row: x.row, ...x.meta,
     request: side(x.request, op.fields.request),
     response: side(x.response, op.fields.response),
   });

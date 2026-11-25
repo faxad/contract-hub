@@ -66,12 +66,13 @@ Drop CSV (or TSV) exports of real calls into `logs/`. Each row is matched to an 
 - **Matching:** a row is matched by service and operation name. If that fails, it's matched by the request's root element. Rows that match nothing are listed under Problems.
 - A bare SOAP body is wrapped in an envelope for display, and JSON is converted using the operation's schema, so lists are arrays and numbers are numbers.
 - Use ◀ ▶ or the picker to step through examples; the newest is shown first.
+- **Search** an operation's examples with the box above them. Every keyword must appear somewhere in the call (request, response, channel, server, status or error). Use `"quoted phrases"` for exact text and `Field=value` for an element or attribute value, e.g. `CurrentStatus=DELIVERED Carrier=DHL`. Matches are highlighted in both panes. The status filter narrows to OK, SOAP fault or error calls.
 
 Columns such as user, customer, IP and session IDs are never shown or sent to the browser. The payloads themselves are shown as logged, though, so anyone who can open Contract Hub can read them. `logs/` is ignored by git.
 
 ## Favorites
 
-Click the ☆ next to any service, operation or element to pin it. Favorites appear at the top of the sidebar and on the dashboard. They are saved in your browser, so each person keeps their own list.
+Click the ☆ next to any service, operation, element or logged example to pin it. Favorites appear at the top of the sidebar and on the dashboard. They are saved in your browser, so each person keeps their own list.
 
 ## Operation view
 
@@ -120,7 +121,7 @@ To use another port with Docker, change `"8090:8090"` in `docker-compose.yml` to
 | `GET /api/services/:id` | Operations, samples and field tables |
 | `GET /api/services/:id/openapi.yaml` (or `.json`) | Full OpenAPI spec |
 | `GET /api/search?q=…&kind=field` | Search results |
-| `GET /api/services/:id/operations/:op/examples` | Logged examples (metadata) |
+| `GET /api/services/:id/operations/:op/examples?q=…&status=…` | Logged examples (metadata), optionally filtered |
 | `GET /api/services/:id/operations/:op/examples/:n` | One example, rendered as XML and JSON |
 | `POST /api/upload` | Upload files (multipart `files`) |
 | `POST /api/rescan` | Force a rescan |
