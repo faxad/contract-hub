@@ -85,13 +85,14 @@ const opOr404 = (req, res) => {
   return { e, op, list: catalogue.examples.list(e.id, op.name) };
 };
 
-/** ?q=keywords (all must match; Name=value matches an element/attribute value) &status=ok|fault|error */
+/** ?q=keywords (all must match; name: value matches an element/attribute/property value) &status=ok|fault|error &exact=1 */
 app.get('/api/services/:id/operations/:op/examples', (req, res) => {
   const hit = opOr404(req, res);
   if (!hit) return;
   const q = String(req.query.q || '').slice(0, 500);
   const status = ['ok', 'fault', 'error'].includes(req.query.status) ? req.query.status : null;
-  const { query, items } = catalogue.examples.search(hit.e.id, hit.op.name, { q, status });
+  const exact = ['1', 'true'].includes(String(req.query.exact));
+  const { query, items } = catalogue.examples.search(hit.e.id, hit.op.name, { q, status, exact });
   res.json({
     version: catalogue.version, total: hit.list.length, matched: items.length, query,
     items: items.map(({ n, hits, x }) => ({ n, id: x.id, hits, file: x.file, row: x.row, ...x.meta })),

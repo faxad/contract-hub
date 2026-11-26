@@ -711,7 +711,7 @@
   }
 
   const exKey = () => `${S.exCtx.d.id}/${S.exCtx.op.name}`;
-  const exFilter = () => S.exFilter.get(exKey()) || { q: '', status: '' };
+  const exFilter = () => S.exFilter.get(exKey()) || { q: '', status: '', exact: false };
 
   /** Examples section shell: heading + search bar (drawn once per operation so typing keeps focus) + results. */
   function renderExamples() {
@@ -735,6 +735,8 @@
         <select id="ex-status" aria-label="Filter by status">
           ${[['', 'All statuses'], ['ok', 'OK'], ['fault', 'SOAP fault'], ['error', 'Error']].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
+        <label class="ex-exact" title="Keywords must be whole words and field values must match the whole value">
+          <input id="ex-exact" type="checkbox" ${f.exact ? 'checked' : ''}> Exact match</label>
         <span class="ex-count" id="ex-count"></span>
       </div>
       <div id="ex-body"></div>`;
@@ -742,9 +744,10 @@
   }
 
   /** Highlight query terms inside rendered code, returning the first match. */
-  function markTerms(root, terms) {
+  function markTerms(root, terms, exact = false) {
     if (!root || !terms.length) return null;
-    const re = new RegExp(terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((x, y) => y.length - x.length).join('|'), 'gi');
+    const alt = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((x, y) => y.length - x.length).join('|');
+    const re = new RegExp(exact ? `(?<![\\w])(?:${alt})(?![\\w])` : alt, 'gi');
     let first = null;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.c') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
     const nodes = [];
@@ -793,7 +796,7 @@
     let list;
     let ex;
     try {
-      list = await exCached(`${base}?v=${S.cat.version}&q=${enc(f.q)}&status=${enc(f.status)}`);
+      list = await exCached(`${base}?v=${S.cat.version}&q=${enc(f.q)}&status=${enc(f.status)}${f.exact ? '&exact=1' : ''}`);
       if (seq !== renderSeq || $('#ex-body') !== body) return;
       if (!list.items.length) {
         $('#ex-count').textContent = `0 of ${list.total} match`;
@@ -854,8 +857,8 @@
       </div>`;
     const terms = [...(list.query.terms || []), ...(list.query.fields || []).map((x) => x.value)].filter((t) => t.length > 0);
     if (terms.length) {
-      const l = markTerms($('#exl .cv'), terms);
-      const r = markTerms($('#exr .cv'), terms);
+      const l = markTerms($('#exl .cv'), terms, list.query.exact);
+      const r = markTerms($('#exr .cv'), terms, list.query.exact);
       scrollPaneTo(l);
       scrollPaneTo(r);
       const n = $$('#ex-body mark.hit').length;
@@ -1061,6 +1064,7 @@
   main().addEventListener('change', (e) => {
     if (e.target.id === 'src-file') { S.ui.srcFile = e.target.value; render(); }
     if (e.target.id === 'ex-pick' && S.exCtx) { S.exPick.set(exKey(), e.target.value); renderExampleBody(); }
+    if (e.target.id === 'ex-exact' && S.exCtx) { S.exFilter.set(exKey(), { ...exFilter(), exact: e.target.checked }); renderExampleBody(); }
     if (e.target.id === 'ex-status' && S.exCtx) { S.exFilter.set(exKey(), { ...exFilter(), status: e.target.value }); renderExampleBody(); }
   });
   window.addEventListener('hashchange', () => { main().scrollTop = 0; render(); });
