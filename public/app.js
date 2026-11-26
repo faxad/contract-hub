@@ -730,7 +730,7 @@
         <div class="ex-search">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 3a5.5 5.5 0 014.38 8.83l3.65 3.64-1.06 1.06-3.64-3.65A5.5 5.5 0 118.5 3zm0 1.5a4 4 0 100 8 4 4 0 000-8z"/></svg>
           <input id="ex-q" type="search" autocomplete="off" spellcheck="false" value="${esc(f.q)}"
-                 placeholder="Search these examples: keywords, &quot;a phrase&quot; or Field=value (e.g. CurrentStatus=DELIVERED)">
+                 placeholder="Search these examples: keywords, &quot;a phrase&quot; or field: value (e.g. CurrentStatus: deliv)">
         </div>
         <select id="ex-status" aria-label="Filter by status">
           ${[['', 'All statuses'], ['ok', 'OK'], ['fault', 'SOAP fault'], ['error', 'Error']].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('')}

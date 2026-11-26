@@ -66,7 +66,7 @@ Drop CSV (or TSV) exports of real calls into `logs/`. Each row is matched to an 
 - **Matching:** a row is matched by service and operation name. If that fails, it's matched by the request's root element. Rows that match nothing are listed under Problems.
 - A bare SOAP body is wrapped in an envelope for display, and JSON is converted using the operation's schema, so lists are arrays and numbers are numbers.
 - Use ◀ ▶ or the picker to step through examples; the newest is shown first.
-- **Search** an operation's examples with the box above them. Every keyword must appear somewhere in the call (request, response, channel, server, status or error). Use `"quoted phrases"` for exact text and `Field=value` for an element or attribute value, e.g. `CurrentStatus=DELIVERED Carrier=DHL`. Matches are highlighted in both panes. The status filter narrows to OK, SOAP fault or error calls.
+- **Search** an operation's examples with the box above them. Every keyword must appear somewhere in the call (request, response, channel, server, status or error). Use `"quoted phrases"` for exact text and `field: value` (or `field=value`) to match the value of an element, attribute or JSON property. The value matches partially and ignores case, so `CurrentStatus: deliv` finds `DELIVERED`; quote values with spaces: `City: "Dubai Hub"`. Matches are highlighted in both panes. The status filter narrows to OK, SOAP fault or error calls.
 
 Columns such as user, customer, IP and session IDs are never shown or sent to the browser. The payloads themselves are shown as logged, though, so anyone who can open Contract Hub can read them. `logs/` is ignored by git.
 
